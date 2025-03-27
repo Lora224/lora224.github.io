@@ -5,7 +5,7 @@ const RestaurantService = {
     // 1. Restricting the key to your domain in Google Cloud Console
     // 2. Moving API calls to a backend service
     // 3. Using environment variables for the key
-    GOOGLE_API_KEY: 'AIzaSyDUtYddk1p1L-8fUg3DKTpW6Df4CMpvwws',
+    GOOGLE_API_KEY: 'AIzaSyAGa8enCteAGCx_yZnSxphWNz_NI4O0cHM',
     
     // Store all fetched restaurants to avoid duplicates
     allFetchedRestaurants: [],
