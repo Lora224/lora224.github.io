@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Tok</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="app">
+        <header>
+            <h1>FoodTok</h1>
+            <div class="search-controls">
+                <div class="location-search">
+                    <input type="text" id="city-input" placeholder="Enter city name">
+                    <button id="search-button">Search</button>
+                    <button id="use-my-location">Use My Location</button>
+                </div>
+                <div class="radius-selector">
+                    <label for="radius-select">Search radius: </label>
+                    <select id="radius-select">
+                        <option value="1">1 km</option>
+                        <option value="2">2 km</option>
+                        <option value="5" selected>5 km</option>
+                        <option value="10">10 km</option>
+                        <option value="20">20 km</option>
+                    </select>
+                </div>
+            </div>
+            <div class="filter-container">
+                <label for="filter-type">Filter by:</label>
+                <select id="filter-type" class="filter-dropdown">
+                    <option value="all" selected>All Places</option>
+                    <option value="restaurant">Restaurants</option>
+                    <option value="cafe">Cafes</option>
+                    <option value="bar">Bars</option>
+                </select>
+            </div>
+        </header>
+        
+        <main>
+            <div class="loading-spinner">
+                <div class="spinner"></div>
+                <p>Finding restaurants...</p>
+            </div>
+            
+            <div class="error-message" style="display: none;"></div>
+            
+            <div class="card-container"></div>
+            
+            <div class="favorites-list" style="display: none;">
+                <h2>Favorites</h2>
+                <div class="favorites-items"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/locationService.js"></script>
+    <script src="js/restaurantService.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
