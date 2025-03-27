@@ -409,5 +409,8 @@ const RestaurantService = {
     
     toRad: function(degrees) {
         return degrees * (Math.PI/180);
-    }
+    },
+    
+    // Update this property in RestaurantService
+    PROXY_URL: 'https://lora224.github.io',
 };
