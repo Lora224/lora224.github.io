@@ -1,10 +1,7 @@
 // Restaurant Service - Handles API calls and data processing
 
 const RestaurantService = {
-    // Google API Key - In production, this should be secured by:
-    // 1. Restricting the key to your domain in Google Cloud Console
-    // 2. Moving API calls to a backend service
-    // 3. Using environment variables for the key
+    // Google API Key
     GOOGLE_API_KEY: 'AIzaSyAGa8enCteAGCx_yZnSxphWNz_NI4O0cHM',
     
     // Store all fetched restaurants to avoid duplicates
@@ -45,56 +42,223 @@ const RestaurantService = {
                 
                 console.log("Loading restaurant data...");
                 
-                // First try to use mock data immediately to show something to the user
-                const mockRestaurants = this.getMockRestaurants(latitude, longitude);
+                // Check if Google Maps API is loaded
+                if (typeof google === 'undefined' || typeof google.maps === 'undefined' || 
+                    typeof google.maps.places === 'undefined') {
+                    console.log("Google Maps API not loaded yet, using mock data");
+                    const mockRestaurants = this.getMockRestaurants(latitude, longitude);
+                    resolve(this.getFilteredBatch(mockRestaurants));
+                    return;
+                }
                 
-                // Try to load Google Maps API in parallel
-                LocationService.ensureGoogleMapsLoaded()
-                    .then(async () => {
-                        try {
-                            // Try to use Google Maps Places API directly with a shorter timeout
-                            const placesPromise = this.searchNearbyPlaces(latitude, longitude, distance);
-                            const timeoutPromise = new Promise((_, reject) => 
-                                setTimeout(() => reject(new Error("Places API request timed out")), 8000)
-                            );
-                            
-                            const restaurants = await Promise.race([placesPromise, timeoutPromise]);
-                            
-                            if (restaurants && restaurants.length > 0) {
-                                // Shuffle all restaurants
-                                const shuffledRestaurants = restaurants.sort(() => Math.random() - 0.5);
-                                
-                                // Take first 5 for current batch
-                                const currentBatch = this.getFilteredBatch(shuffledRestaurants.slice(0, 5));
-                                
-                                // Store the rest for later
-                                this.remainingRestaurants = shuffledRestaurants.slice(5);
-                                
-                                // Add current batch to all fetched restaurants
-                                this.allFetchedRestaurants = [...this.allFetchedRestaurants, ...currentBatch];
-                                
-                                // Replace the mock data with real data
-                                resolve(currentBatch);
-                            }
-                        } catch (error) {
-                            console.error("Error using Places API:", error);
-                            // We already resolved with mock data, so no need to do anything here
+                // Try to use Google Maps Places API
+                try {
+                    // Create a dedicated element for the PlacesService
+                    let placesDiv = document.getElementById('places-service');
+                    if (!placesDiv) {
+                        placesDiv = document.createElement('div');
+                        placesDiv.id = 'places-service';
+                        placesDiv.style.display = 'none';
+                        document.body.appendChild(placesDiv);
+                    }
+                    
+                    const location = new google.maps.LatLng(latitude, longitude);
+                    const placesService = new google.maps.places.PlacesService(placesDiv);
+                    
+                    // Try different types of places to get more results
+                    const placeTypes = ['restaurant', 'cafe', 'bar'];
+                    let allResults = [];
+                    
+                    // Use a timeout to prevent hanging
+                    const timeoutId = setTimeout(() => {
+                        console.log("Places API request timed out, using mock data");
+                        if (allResults.length === 0) {
+                            const mockRestaurants = this.getMockRestaurants(latitude, longitude);
+                            resolve(this.getFilteredBatch(mockRestaurants));
+                        } else {
+                            // Process whatever results we have
+                            this.processPlacesResults(allResults, placesService, latitude, longitude)
+                                .then(restaurants => {
+                                    if (restaurants.length > 0) {
+                                        // Take first 5 for current batch
+                                        const currentBatch = this.getFilteredBatch(restaurants.slice(0, 5));
+                                        // Store the rest for later
+                                        this.remainingRestaurants = restaurants.slice(5);
+                                        resolve(currentBatch);
+                                    } else {
+                                        const mockRestaurants = this.getMockRestaurants(latitude, longitude);
+                                        resolve(this.getFilteredBatch(mockRestaurants));
+                                    }
+                                });
                         }
-                    })
-                    .catch(error => {
-                        console.error("Error loading Google Maps API:", error);
-                        // We already resolved with mock data, so no need to do anything here
-                    });
-                
-                // Immediately resolve with mock data while we try to load real data
-                resolve(this.getFilteredBatch(mockRestaurants));
-                
+                    }, 8000);
+                    
+                    // Try to search for restaurants first
+                    const request = {
+                        location: location,
+                        radius: distance * 1000, // Convert km to meters
+                        type: 'restaurant'
+                    };
+                    
+                    console.log("Searching for restaurants near", latitude, longitude);
+                    
+                    // Use mock data immediately to show something to the user
+                    const mockRestaurants = this.getMockRestaurants(latitude, longitude);
+                    
+                    // Try to perform the nearby search
+                    try {
+                        placesService.nearbySearch(request, (results, status) => {
+                            console.log("Places API returned status:", status);
+                            
+                            if (status === google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
+                                console.log("Found restaurants:", results.length);
+                                allResults = [...results];
+                                
+                                // Process the results
+                                clearTimeout(timeoutId);
+                                this.processPlacesResults(allResults, placesService, latitude, longitude)
+                                    .then(restaurants => {
+                                        if (restaurants.length > 0) {
+                                            // Shuffle all restaurants
+                                            const shuffledRestaurants = restaurants.sort(() => Math.random() - 0.5);
+                                            
+                                            // Take first 5 for current batch
+                                            const currentBatch = this.getFilteredBatch(shuffledRestaurants.slice(0, 5));
+                                            
+                                            // Store the rest for later
+                                            this.remainingRestaurants = shuffledRestaurants.slice(5);
+                                            
+                                            // Add current batch to all fetched restaurants
+                                            this.allFetchedRestaurants = [...this.allFetchedRestaurants, ...currentBatch];
+                                            
+                                            resolve(currentBatch);
+                                        } else {
+                                            resolve(this.getFilteredBatch(mockRestaurants));
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error("Error processing places results:", error);
+                                        resolve(this.getFilteredBatch(mockRestaurants));
+                                    });
+                            } else {
+                                console.warn("Places API returned status:", status);
+                                resolve(this.getFilteredBatch(mockRestaurants));
+                            }
+                        });
+                    } catch (error) {
+                        console.error("Error in nearbySearch:", error);
+                        clearTimeout(timeoutId);
+                        resolve(this.getFilteredBatch(mockRestaurants));
+                    }
+                } catch (error) {
+                    console.error("Error setting up Places API:", error);
+                    const mockRestaurants = this.getMockRestaurants(latitude, longitude);
+                    resolve(this.getFilteredBatch(mockRestaurants));
+                }
             } catch (error) {
-                console.error('Error fetching nearby restaurants:', error);
+                console.error('Error in getNearbyRestaurants:', error);
                 // Always provide some results even on error
                 const mockRestaurants = this.getMockRestaurants(latitude, longitude);
                 resolve(this.getFilteredBatch(mockRestaurants));
             }
+        });
+    },
+    
+    // Process the results from the Places API
+    processPlacesResults: function(results, placesService, latitude, longitude) {
+        return new Promise((resolve) => {
+            const processedResults = [];
+            let pendingRequests = Math.min(results.length, 15); // Limit to 15 places
+            
+            if (pendingRequests === 0) {
+                resolve([]);
+                return;
+            }
+            
+            // Set a timeout for all details requests
+            const timeoutId = setTimeout(() => {
+                console.log("Place details requests timed out");
+                resolve(processedResults);
+            }, 8000);
+            
+            // Process each place
+            results.slice(0, 15).forEach((place) => {
+                const request = {
+                    placeId: place.place_id,
+                    fields: ['name', 'rating', 'formatted_address', 'photos', 'types', 
+                             'editorial_summary', 'url', 'website', 'formatted_phone_number', 'reviews']
+                };
+                
+                // Get details for each place
+                try {
+                    placesService.getDetails(request, (placeDetails, status) => {
+                        pendingRequests--;
+                        
+                        if (status === google.maps.places.PlacesServiceStatus.OK && placeDetails) {
+                            try {
+                                // Calculate distance
+                                const distance = this.calculateDistance(
+                                    latitude, 
+                                    longitude, 
+                                    place.geometry.location.lat(), 
+                                    place.geometry.location.lng()
+                                );
+                                
+                                // Get a good description
+                                let description = 'A popular place in the area.';
+                                if (placeDetails.editorial_summary && placeDetails.editorial_summary.overview) {
+                                    description = placeDetails.editorial_summary.overview;
+                                } else if (placeDetails.reviews && placeDetails.reviews.length > 0) {
+                                    description = placeDetails.reviews[0].text.substring(0, 150) + '...';
+                                }
+                                
+                                // Get photo URL
+                                let photoUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2YyZjJmMiIvPjx0ZXh0IHg9IjQwMCIgeT0iMjAwIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMzAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2NjY2NjYiPk5vIEltYWdlIEF2YWlsYWJsZTwvdGV4dD48L3N2Zz4=';
+                                if (placeDetails.photos && placeDetails.photos.length > 0) {
+                                    try {
+                                        photoUrl = placeDetails.photos[0].getUrl({ maxWidth: 800, maxHeight: 400 });
+                                    } catch (photoError) {
+                                        console.error("Error getting photo URL:", photoError);
+                                    }
+                                }
+                                
+                                // Create restaurant object
+                                const restaurant = {
+                                    id: place.place_id,
+                                    name: placeDetails.name || place.name,
+                                    introduction: description,
+                                    rating: placeDetails.rating || place.rating || 'Not rated',
+                                    image: photoUrl,
+                                    categories: placeDetails.types ? 
+                                        placeDetails.types.filter(type => type !== 'establishment' && type !== 'food') : 
+                                        [],
+                                    distance: distance.toFixed(2), // in km
+                                    url: placeDetails.url || `https://www.google.com/maps/place/?q=place_id:${place.place_id}`
+                                };
+                                
+                                processedResults.push(restaurant);
+                            } catch (error) {
+                                console.error("Error processing place details:", error);
+                            }
+                        } else {
+                            console.warn("Place details API returned status:", status, "for place:", place.place_id);
+                        }
+                        
+                        // When all requests are done, resolve with results
+                        if (pendingRequests === 0) {
+                            clearTimeout(timeoutId);
+                            resolve(processedResults);
+                        }
+                    });
+                } catch (error) {
+                    console.error("Error in getDetails:", error);
+                    pendingRequests--;
+                    if (pendingRequests === 0) {
+                        clearTimeout(timeoutId);
+                        resolve(processedResults);
+                    }
+                }
+            });
         });
     },
     
@@ -109,219 +273,42 @@ const RestaurantService = {
         );
     },
     
-    // Search for nearby places using Google Maps Places library
-    searchNearbyPlaces: function(latitude, longitude, distance) {
-        return new Promise((resolve, reject) => {
-            try {
-                // Check if Google Maps is available
-                if (typeof google === 'undefined' || !google.maps || !google.maps.places) {
-                    throw new Error("Google Maps API not available");
-                }
-                
-                // Create a dedicated element for the PlacesService
-                let placesDiv = document.getElementById('places-service');
-                if (!placesDiv) {
-                    placesDiv = document.createElement('div');
-                    placesDiv.id = 'places-service';
-                    placesDiv.style.display = 'none';
-                    document.body.appendChild(placesDiv);
-                }
-                
-                const location = new google.maps.LatLng(latitude, longitude);
-                const placesService = new google.maps.places.PlacesService(placesDiv);
-                
-                const request = {
-                    location: location,
-                    radius: distance * 1000, // Convert km to meters
-                    type: ['restaurant', 'cafe', 'bar'] // Include all three types
-                };
-                
-                // Set a timeout for the Places API request
-                const requestTimeout = setTimeout(() => {
-                    console.warn("Places API request timed out");
-                    resolve([]);
-                }, 5000);
-                
-                placesService.nearbySearch(request, (results, status) => {
-                    clearTimeout(requestTimeout);
-                    
-                    if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-                        // Process each restaurant to get more details
-                        this.processPlacesResults(results, latitude, longitude, resolve, reject);
-                    } else {
-                        console.warn("Places API returned status:", status);
-                        resolve([]);
-                    }
-                });
-            } catch (error) {
-                console.error("Error in searchNearbyPlaces:", error);
-                resolve([]);
-            }
-        });
-    },
-    
-    // Process places results to get more details
-    processPlacesResults: function(results, latitude, longitude, resolve, reject) {
-        try {
-            // Check if Google Maps is available
-            if (typeof google === 'undefined' || !google.maps || !google.maps.places) {
-                throw new Error("Google Maps API not available");
-            }
-            
-            // Create a dedicated element for the PlacesService
-            let detailsDiv = document.getElementById('details-service');
-            if (!detailsDiv) {
-                detailsDiv = document.createElement('div');
-                detailsDiv.id = 'details-service';
-                detailsDiv.style.display = 'none';
-                document.body.appendChild(detailsDiv);
-            }
-            
-            const placesService = new google.maps.places.PlacesService(detailsDiv);
-            const processedResults = [];
-            
-            // Limit to 15 results to avoid too many API calls
-            const limitedResults = results.slice(0, 15);
-            let pendingRequests = limitedResults.length;
-            
-            // If no results, resolve with empty array
-            if (limitedResults.length === 0) {
-                resolve([]);
-                return;
-            }
-            
-            // Set a timeout for all details requests
-            const detailsTimeout = setTimeout(() => {
-                console.warn("Some details requests timed out, returning partial results");
-                if (processedResults.length > 0) {
-                    resolve(processedResults);
-                } else {
-                    resolve([]);
-                }
-            }, 8000);
-            
-            limitedResults.forEach((place) => {
-                // Calculate distance
-                const placeLocation = place.geometry.location;
-                const distance = this.calculateDistance(
-                    latitude,
-                    longitude,
-                    placeLocation.lat(),
-                    placeLocation.lng()
-                );
-                
-                // Request additional details
-                const request = {
-                    placeId: place.place_id,
-                    fields: ['name', 'rating', 'formatted_address', 'photos', 'types', 'editorial_summary', 'url', 'website', 'formatted_phone_number', 'reviews']
-                };
-                
-                // Set a timeout for each individual details request
-                const individualTimeout = setTimeout(() => {
-                    pendingRequests--;
-                    if (pendingRequests === 0) {
-                        clearTimeout(detailsTimeout);
-                        resolve(processedResults);
-                    }
-                }, 3000);
-                
-                placesService.getDetails(request, (placeDetails, status) => {
-                    clearTimeout(individualTimeout);
-                    pendingRequests--;
-                    
-                    if (status === google.maps.places.PlacesServiceStatus.OK && placeDetails) {
-                        // Get a good description from various sources
-                        let description = '';
-                        
-                        // Try to get description from editorial summary
-                        if (placeDetails.editorial_summary && placeDetails.editorial_summary.overview) {
-                            description = placeDetails.editorial_summary.overview;
-                        } 
-                        // Try to get description from first review
-                        else if (placeDetails.reviews && placeDetails.reviews.length > 0) {
-                            description = placeDetails.reviews[0].text.substring(0, 150) + '...';
-                        } 
-                        // Fallback description based on place type
-                        else {
-                            if (place.types.includes('restaurant')) {
-                                description = `${placeDetails.name || place.name} is a restaurant located in the area. Click the title to view more details.`;
-                            } else if (place.types.includes('cafe')) {
-                                description = `${placeDetails.name || place.name} is a cafe located in the area. Click the title to view more details.`;
-                            } else if (place.types.includes('bar')) {
-                                description = `${placeDetails.name || place.name} is a bar located in the area. Click the title to view more details.`;
-                            } else {
-                                description = `${placeDetails.name || place.name} is a popular place in the area. Click the title to view more details.`;
-                            }
-                        }
-                        
-                        // Create restaurant object
-                        const restaurant = {
-                            id: place.place_id,
-                            name: placeDetails.name || place.name,
-                            introduction: description,
-                            rating: placeDetails.rating || place.rating || 'Not rated',
-                            image: placeDetails.photos && placeDetails.photos.length > 0 ? 
-                                placeDetails.photos[0].getUrl({ maxWidth: 800, maxHeight: 400 }) : 
-                                'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2YyZjJmMiIvPjx0ZXh0IHg9IjQwMCIgeT0iMjAwIiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMzAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2NjY2NjYiPk5vIEltYWdlIEF2YWlsYWJsZTwvdGV4dD48L3N2Zz4=',
-                            categories: placeDetails.types ? 
-                                placeDetails.types.filter(type => type !== 'establishment' && type !== 'food' && type !== 'point_of_interest') : 
-                                place.types.filter(type => type !== 'establishment' && type !== 'food' && type !== 'point_of_interest'),
-                            distance: distance.toFixed(2), // in km
-                            url: placeDetails.url || `https://www.google.com/maps/place/?q=place_id:${place.place_id}`
-                        };
-                        
-                        processedResults.push(restaurant);
-                    }
-                    
-                    // When all requests are done, resolve with results
-                    if (pendingRequests === 0) {
-                        clearTimeout(detailsTimeout);
-                        resolve(processedResults);
-                    }
-                });
-            });
-        } catch (error) {
-            console.error("Error in processPlacesResults:", error);
-            resolve([]);
-        }
-    },
-    
-    // Generate mock restaurant data for fallback
+    // Get mock restaurants for testing
     getMockRestaurants: function(latitude, longitude) {
         const mockData = [
             {
                 name: 'Delicious Bistro',
                 categories: ['restaurant', 'french'],
-                description: 'A cozy bistro with a variety of delicious French dishes. Known for their excellent wine selection and intimate atmosphere. Perfect for a romantic dinner.',
+                description: 'A cozy spot with a variety of delicious dishes. Their signature dish is the coq au vin, and they offer an extensive wine list featuring local and imported selections.',
                 type: 'restaurant'
             },
             {
-                name: 'Tasty Corner Cafe',
-                categories: ['cafe', 'breakfast'],
-                description: 'Family-friendly cafe with something for everyone. Their breakfast menu is available all day and features freshly baked pastries and organic coffee.',
+                name: 'Tasty Corner',
+                categories: ['restaurant', 'american'],
+                description: 'Family-friendly restaurant with something for everyone. Known for their generous portions and friendly service. Don\'t miss their famous apple pie for dessert!',
+                type: 'restaurant'
+            },
+            {
+                name: 'Espresso Express',
+                categories: ['cafe', 'coffee'],
+                description: 'Great coffee and pastries in a relaxed atmosphere. They roast their beans in-house and offer a variety of brewing methods. The outdoor seating area is perfect on sunny days.',
                 type: 'cafe'
             },
             {
-                name: 'Gourmet Palace',
-                categories: ['restaurant', 'fine_dining'],
-                description: 'Upscale dining experience with innovative cuisine. The chef creates seasonal menus using locally sourced ingredients. Reservations recommended.',
-                type: 'restaurant'
-            },
-            {
-                name: 'Flavor Haven',
-                categories: ['restaurant', 'asian'],
-                description: 'Quick and tasty Asian fusion meals in a casual atmosphere. Their signature dishes include spicy noodle bowls and creative sushi rolls.',
-                type: 'restaurant'
-            },
-            {
-                name: 'The Local Bar',
+                name: 'Pub & Grub',
                 categories: ['bar', 'pub'],
-                description: 'Great drinks and atmosphere for evening entertainment. Features craft beers on tap, classic cocktails, and live music on weekends.',
+                description: 'Classic pub fare and a wide selection of beers. Their trivia nights on Thursdays are popular with locals. The fish and chips are a customer favorite.',
                 type: 'bar'
             },
             {
+                name: 'Sushi Spot',
+                categories: ['restaurant', 'japanese'],
+                description: 'Fresh sushi and Japanese specialties. The chef\'s omakase menu offers a unique dining experience with the freshest seasonal ingredients.',
+                type: 'restaurant'
+            },
+            {
                 name: 'Morning Brew',
-                categories: ['cafe', 'coffee'],
+                categories: ['cafe', 'breakfast'],
                 description: 'Perfect spot for your morning coffee and pastry. They roast their own beans and offer a variety of brewing methods. Try their famous cinnamon rolls!',
                 type: 'cafe'
             },
@@ -336,18 +323,6 @@ const RestaurantService = {
                 categories: ['bar', 'lounge'],
                 description: 'Sophisticated cocktails in an elegant setting. Their mixologists create both classic and innovative drinks. Enjoy the relaxed ambiance and occasional jazz performances.',
                 type: 'bar'
-            },
-            {
-                name: 'Sunrise Bakery & Cafe',
-                categories: ['cafe', 'bakery'],
-                description: 'Artisanal bakery and cafe serving freshly baked bread, pastries, and light meals. Everything is made in-house daily. Their sourdough is legendary in the neighborhood.',
-                type: 'cafe'
-            },
-            {
-                name: 'Spice Route',
-                categories: ['restaurant', 'indian'],
-                description: 'Authentic Indian cuisine with dishes from various regions. Their extensive menu features both vegetarian and meat options with customizable spice levels.',
-                type: 'restaurant'
             }
         ];
         
@@ -409,8 +384,7 @@ const RestaurantService = {
     
     toRad: function(degrees) {
         return degrees * (Math.PI/180);
-    },
-    
-    // Update this property in RestaurantService
-    PROXY_URL: 'https://lora224.github.io',
+    }
 };
+
+console.log("RestaurantService loaded successfully");
