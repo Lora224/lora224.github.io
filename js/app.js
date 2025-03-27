@@ -16,14 +16,33 @@ const App = {
     init: async function() {
         try {
             // Set up event listeners
-            UI.elements.radiusSelect.addEventListener('change', this.handleRadiusChange.bind(this));
-            UI.elements.searchButton.addEventListener('click', this.handleCitySearch.bind(this));
-            UI.elements.cityInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    this.handleCitySearch();
-                }
-            });
-            UI.elements.useMyLocationButton.addEventListener('click', this.handleUseMyLocation.bind(this));
+            if (UI.elements.radiusSelect) {
+                UI.elements.radiusSelect.addEventListener('change', this.handleRadiusChange.bind(this));
+            }
+            
+            if (UI.elements.searchButton) {
+                UI.elements.searchButton.addEventListener('click', this.handleCitySearch.bind(this));
+            }
+            
+            if (UI.elements.cityInput) {
+                UI.elements.cityInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.handleCitySearch();
+                    }
+                });
+            }
+            
+            if (UI.elements.useMyLocationButton) {
+                UI.elements.useMyLocationButton.addEventListener('click', this.handleUseMyLocation.bind(this));
+            }
+            
+            if (UI.elements.categoryFilter) {
+                UI.elements.categoryFilter.addEventListener('change', this.handleCategoryChange.bind(this));
+            }
+            
+            if (UI.elements.loadMoreBtn) {
+                UI.elements.loadMoreBtn.addEventListener('click', () => this.loadMoreRestaurants());
+            }
             
             // Add scroll event listener for infinite scrolling
             window.addEventListener('scroll', this.handleScroll.bind(this));
@@ -40,6 +59,9 @@ const App = {
             // Initialize UI filters
             UI.initFilters();
             
+            // Initialize the favorites panel
+            UI.initFavoritesPanel();
+            
         } catch (error) {
             console.error('Error initializing app:', error);
             UI.showError(`Error: ${error.message}`);
@@ -50,6 +72,13 @@ const App = {
     handleRadiusChange: function(event) {
         this.radius = parseInt(event.target.value);
         this.loadRestaurants(false); // false means not loading more, but starting fresh
+    },
+    
+    // Handle category change
+    handleCategoryChange: function(event) {
+        const filterValue = event.target.value;
+        RestaurantService.setFilter(filterValue);
+        UI.applyFilters();
     },
     
     // Handle city search
@@ -119,6 +148,11 @@ const App = {
     // Load restaurants based on current location and radius
     loadRestaurants: async function(isLoadMore = false) {
         try {
+            if (!this.location) {
+                UI.showError('Location not available. Please try again.');
+                return;
+            }
+            
             if (!isLoadMore) {
                 UI.showLoading();
             } else {
@@ -127,50 +161,44 @@ const App = {
             
             this.isLoading = true;
             
-            if (!this.location) {
-                throw new Error('Location not available');
-            }
-            
-            console.log("Loading restaurants for:", this.location);
-            
-            // Add timeout to prevent hanging
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Request timed out')), 15000)
-            );
-            
-            const restaurantsPromise = RestaurantService.getNearbyRestaurants(
-                this.location.latitude,
-                this.location.longitude,
+            const { latitude, longitude } = this.location;
+            const restaurants = await RestaurantService.getNearbyRestaurants(
+                latitude, 
+                longitude, 
                 this.radius,
                 isLoadMore
             );
             
-            const restaurants = await Promise.race([restaurantsPromise, timeoutPromise]);
-            
-            console.log("Restaurants loaded:", restaurants.length);
-            
-            if (isLoadMore) {
-                // Add to current restaurants
-                this.currentRestaurants = [...this.currentRestaurants, ...restaurants];
-                UI.appendRestaurants(restaurants);
-            } else {
-                // Replace current restaurants
+            if (!isLoadMore) {
                 this.currentRestaurants = restaurants;
                 UI.displayRestaurants(restaurants);
+                
+                // Populate category filter with available categories
+                UI.populateCategoryFilter(restaurants);
+            } else {
+                this.currentRestaurants = [...this.currentRestaurants, ...restaurants];
+                UI.appendRestaurants(restaurants);
+            }
+            
+            // Show/hide load more button
+            if (UI.elements.loadMoreContainer) {
+                UI.elements.loadMoreContainer.style.display = 
+                    RestaurantService.hasMoreRestaurants() ? 'flex' : 'none';
             }
             
         } catch (error) {
             console.error('Error loading restaurants:', error);
             UI.showError(`Error loading restaurants: ${error.message}`);
+        } finally {
+            this.isLoading = false;
         }
-        
-        this.isLoading = false;
     },
     
-    // Load more restaurants when scrolling
+    // Load more restaurants when scrolling or clicking load more
     loadMoreRestaurants: function() {
-        // Don't show loading indicator for a smoother experience
-        this.loadRestaurants(true);
+        if (!this.isLoading && RestaurantService.hasMoreRestaurants()) {
+            this.loadRestaurants(true);
+        }
     },
     
     // Get current restaurants

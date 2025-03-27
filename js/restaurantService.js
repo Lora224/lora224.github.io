@@ -230,7 +230,7 @@ const RestaurantService = {
                                     rating: placeDetails.rating || place.rating || 'Not rated',
                                     image: photoUrl,
                                     categories: placeDetails.types ? 
-                                        placeDetails.types.filter(type => type !== 'establishment' && type !== 'food') : 
+                                        placeDetails.types.filter(type => !['establishment', 'food', 'point_of_interest'].includes(type)) : 
                                         [],
                                     distance: distance.toFixed(2), // in km
                                     url: placeDetails.url || `https://www.google.com/maps/place/?q=place_id:${place.place_id}`
@@ -365,7 +365,7 @@ const RestaurantService = {
         
         // Check if there are any restaurants matching the current filter
         return this.remainingRestaurants.some(restaurant => 
-            restaurant.categories.includes(this.currentFilter)
+            restaurant.categories.some(category => category === this.currentFilter)
         );
     },
     
@@ -384,6 +384,17 @@ const RestaurantService = {
     
     toRad: function(degrees) {
         return degrees * (Math.PI/180);
+    },
+
+    // Add this method to the RestaurantService object
+    getFilteredRestaurants: function(restaurants, filterType) {
+        if (filterType === 'all') {
+            return restaurants;
+        }
+        
+        return restaurants.filter(restaurant => 
+            restaurant.categories.some(category => category === filterType)
+        );
     }
 };
 

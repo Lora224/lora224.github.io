@@ -3,60 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Food Tok</title>
+    <title>FoodTok</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAGa8enCteAGCx_yZnSxphWNz_NI4O0cHM&libraries=places" defer></script>
 </head>
 
 <body>
-    <div id="app">
-        <header>
-            <h1>FoodTok</h1>
-            <div class="search-controls">
-                <div class="location-search">
-                    <input type="text" id="city-input" placeholder="Enter city name">
-                    <button id="search-button">Search</button>
-                    <button id="use-my-location">Use My Location</button>
-                </div>
-                <div class="radius-selector">
-                    <label for="radius-select">Search radius: </label>
-                    <select id="radius-select">
-                        <option value="1">1 km</option>
-                        <option value="2">2 km</option>
-                        <option value="5" selected>5 km</option>
-                        <option value="10">10 km</option>
-                        <option value="20">20 km</option>
-                    </select>
-                </div>
-            </div>
-            <div class="filter-container">
-                <label for="filter-type">Filter by:</label>
-                <select id="filter-type" class="filter-dropdown">
-                    <option value="all" selected>All Places</option>
-                    <option value="restaurant">Restaurants</option>
-                    <option value="cafe">Cafes</option>
-                    <option value="bar">Bars</option>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">FoodTok</div>
+            <nav>
+
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Enhanced Filter Bar -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label for="radius-select" class="filter-label">Distance:</label>
+                <select id="radius-select" class="form-select filter-select">
+                    <option value="1">1 km</option>
+                    <option value="2">2 km</option>
+                    <option value="5" selected>5 km</option>
+                    <option value="10">10 km</option>
+                    <option value="20">20 km</option>
                 </select>
             </div>
-        </header>
-        
-        <main>
-            <div class="loading-spinner">
-                <div class="spinner"></div>
-                <p>Finding restaurants...</p>
+            
+            <div class="filter-group">
+                <label for="category-filter" class="filter-label">Category:</label>
+                <select id="category-filter" class="form-select filter-select">
+                    <option value="all" selected>All Categories</option>
+                    <option value="cafe">Cafes</option>
+                    <option value="restaurant">Restaurants</option>
+                    <option value="bar">Bars</option>
+                    <!-- Categories will be populated dynamically -->
+                </select>
             </div>
             
-            <div class="error-message" style="display: none;"></div>
-            
-            <div class="card-container"></div>
-            
-            <div class="favorites-list" style="display: none;">
-                <h2>Favorites</h2>
-                <div class="favorites-items"></div>
+            <div class="filter-group search-group">
+                <label for="city-input" class="filter-label">City:</label>
+                <div class="search-input-group">
+                    <input type="text" id="city-input" class="form-input" placeholder="Enter city name">
+                    
+                </div>
+                <div><button id="search-button" class="btn btn-primary">Search</button></div>
             </div>
-        </main>
-    </div>
+            
+            <button id="use-my-location-button" class="btn btn-secondary">
+                <span class="btn-icon">📍</span> Use My Location
+            </button>
+        </div>
 
+        <!-- Location Display -->
+        <div id="location-display" class="location-display" style="display: none;"></div>
+        
+        <!-- Loading Spinner -->
+        <div id="loading-spinner" class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Finding places...</p>
+        </div>
+        
+        <!-- Error Message -->
+        <div id="error-message" class="error-message" style="display: none;"></div>
+        
+        <!-- Restaurant Cards Container -->
+        <div id="card-container" class="card-container"></div>
+        
+        <!-- Load More Button -->
+        <div id="load-more-container" class="load-more-container" style="display: none;">
+            <button id="load-more-btn" class="load-more-btn">Load More</button>
+        </div>
+        
+        <!-- Empty State -->
+        <div id="empty-state" class="empty-state" style="display: none;">
+            <div class="empty-state-icon">🍽️</div>
+            <h2 class="empty-state-title">No place found</h2>
+            <p class="empty-state-text">Try adjusting your filters or searching in a different location.</p>
+        </div>
+    </main>
+
+    <!-- Scripts -->
     <script src="js/locationService.js"></script>
     <script src="js/restaurantService.js"></script>
     <script src="js/ui.js"></script>
